@@ -1,0 +1,158 @@
+<?php
+/**
+ * Validate twitter username
+ */
+function twitter_block_validate_username($element, &$form_state) {
+  // Check to make sure the username meets twitter requirements (1-15
+  // alph-numeric characters and underscores.
+  //
+  // NOTE: Twitter now requires that usernames be at least three characters
+  // long, but there are some legacy accounts that are only one character.
+  $valid = preg_match('/^[a-z0-9_]{1,15}$/i', $element['#value']);
+  if (!$valid) {
+    form_error($element, t('Twitter Username must be alphanumeric and underscores only and must be between one and three characters long.'));
+  }
+}
+
+/**
+ * Validate number of tweets for numeric and greater than zero
+ */
+function twitter_block_validate_number($element, &$form_state) {
+  if ((int)$element['#value'] != $element['#value'] || (int)$element['#value'] < 1) {
+    form_error($element, t('Number of tweets must be numeric and at least 1'));
+  }
+}
+
+/**
+ * Create a new perm to administer the Twitter Block Settings
+ */
+function alerts_perm() {
+  return array('administer twitter block settings');
+}
+
+function twitter_block_username_link($username) {
+  $username_processed = '<a href="http://twitter.com/' . $username[0] . '">' . $username[0] . '</a>';
+  return $username_processed;
+}
+
+
+/**
+ * Generates the block! 
+ */
+function twitter_block_block($op = 'list', $delta = 0, $edit = array()) {
+  if ($op == "list") {
+    $block = array();
+    
+    $block['twitter_block'] = array(
+      'info' => 'Twitter Block',
+      'status' => 0,
+      'cache' => BLOCK_CACHE_GLOBAL,
+    );
+    
+    return $block;
+  }
+  elseif ($op == "view") {
+    $block['subject'] = t('Latest Tweets');
+    
+    $output = cache_get('twitter_block_block', 'cache');
+    if (empty($output)) {
+      $api_queries = array(
+        'screen_name' => variable_get('twitter_block_username', ''),
+        'count' => variable_get('twitter_block_tweet_number', 5),
+      );
+      if (variable_get('twitter_block_retweets', 1)) {
+        $api_queries['include_rts'] = 'true';
+      }
+      $api_url = url('http://api.twitter.com/1/statuses/user_timeline.json', array('query' => $api_queries));
+      $feed = file_get_contents($api_url);
+      $feed = json_decode($feed);
+      $tweets = array();
+      foreach ($feed as $tweet) {
+        $tweets[] = array(
+          'avatar_url' => $tweet->user->profile_image_url,
+          'text' => preg_replace_callback('/@([A-Za-z0-9_]+)/', 'twitter_block_username_link', _filter_url($tweet->text)),
+          'date' => $tweet->created_at,
+        );
+      } 
+      $rows = array();
+      $i=0;
+      foreach ($tweets as $row) {
+        $avatar = '';
+        if (variable_get('twitter_block_avatar', 1)) {
+          $avatar = theme_image($row['avatar_url'], $alt = '', $title = '', $attributes = NULL, $getsize = FALSE);
+        }
+        $rows[] = '<div class="twitter-block-row twitter-block-row-' . $i . '">' . @todo if first if last
+                  $avatar .
+                  '<span class="tweet-date"' . $row['date'] . '</span>' . 
+                  '<p>' . $row['text'] . '</p>' .
+                  '</div>';
+        $i++;
+      }
+
+      $twitter_rows = implode('', $rows);
+
+      $output = '<div>' . $twitter_rows . '</div>';
+      cache_set('twitter_block_block', $output, 'cache', CACHE_TEMPORARY);
+    }
+    else {
+      $output = $output->data;
+    }
+
+    $block['content'] = $output;
+
+    return $block;
+
+  }
+  elseif ($op == "configure") {
+      // Username
+  $form['twitter_block_username'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Twitter Username'),
+    '#description' => t('Enter the Username of the Twitter user whose tweets should be displayed in the block. Do not include the leading ampersand (@).'), 
+    '#required' => TRUE,
+    '#size' => 15,
+    '#maxlength' => 128,
+    '#default_value' => variable_get('twitter_block_username', ''),
+    '#element_validate' => array('twitter_block_validate_username'),
+  );
+  // Fieldset for advanced settings
+  $form['advanced'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Advanced Settings'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+  // Number of tweets
+  $form['advanced']['twitter_block_tweet_number'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Number of tweets to return'),
+    '#size' => 3,
+    '#maxlength' => 3,
+    '#default_value' => variable_get('twitter_block_tweet_number', 5),
+    '#required' => TRUE,
+    '#element_validate' => array('twitter_block_validate_number'),
+  );
+  // Retweets?
+  $form['advanced']['twitter_block_retweets'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show retweets'),
+    '#description' => t('Check this box if the block should include retweets.'),
+    '#default_value' => variable_get('twitter_block_retweets', 1),
+  );
+  // Avatar?
+  $form['advanced']['twitter_block_avatar'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show avatars'),
+    '#description' => t('Check this box if tweet in the block should show the tweeter\'s avatar next to it.'),
+    '#default_value' => variable_get('twitter_block_avatar', 1),
+  );
+  return $form;
+  }
+  elseif ($op == "save") {
+    variable_set('twitter_block_username', $edit['twitter_block_username']);
+    variable_set('twitter_block_tweet_number', $edit['twitter_block_tweet_number']);
+    variable_set('twitter_block_retweets', $edit['twitter_block_retweets']);
+    variable_set('twitter_block_avatar', $edit['twitter_block_avatar']);
+  }
+  cache_clear_all('twitter_block_block', 'cache', FALSE);
+}

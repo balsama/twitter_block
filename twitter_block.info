@@ -1,0 +1,9 @@
+; $Id$
+name = "Twitter Block"
+description = "Provides a block that returns x most recent tweets from a given user"
+package = Other 
+core = 6.x
+ 
+version = "6.x-1.0"
+core = "6.x"
+project = "Twitter Block"
